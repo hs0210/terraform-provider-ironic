@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	baremetalhost "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Schema resource definition for an Ironic node.
@@ -177,7 +178,7 @@ func resourceNodeV1() *schema.Resource {
 				Computed: true,
 			},
 			"raid": {
-				Type:     schema.TypeObject,
+				Type:     schema.TypeMap,
 				Optional: true,
 				Computed: true,
 			},
@@ -609,8 +610,12 @@ func changePowerState(client *gophercloud.ServiceClient, d *schema.ResourceData,
 // Call Ironic's API and clean the raid config
 func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (err error) {
 	var logicalDisks []nodes.LogicalDisk
+	var raid *baremetalhost.RAIDConfig
 
-	raid := d.Get("raid").(*baremetalhost.RAIDConfig)
+	raidConfig := d.Get("raid").(map[string]interface{})
+	if err = mapstructure.Decode(raidConfig, &raid); err != nil {
+		return
+	}
 
 	// Build target for RAID configuration steps
 	logicalDisks, err = ironic.BuildTargetRAIDCfg(raid)
@@ -635,7 +640,12 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 }
 
 func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
-	raid := d.Get("raid").(*baremetalhost.RAIDConfig)
+	var raid *baremetalhost.RAIDConfig
+
+	raidConfig := d.Get("raid").(map[string]interface{})
+	if err = mapstructure.Decode(raidConfig, &raid); err != nil {
+		return
+	}
 
 	// Build raid clean steps
 	if d.Get("raid_interface").(string) != "no-raid" {
