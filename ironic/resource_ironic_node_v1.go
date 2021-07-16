@@ -1,6 +1,7 @@
 package ironic
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -10,8 +11,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	baremetalhost "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/metal3-io/baremetal-operator/pkg/bmc"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
-	"github.com/mitchellh/mapstructure"
 )
 
 // Schema resource definition for an Ironic node.
@@ -177,8 +178,13 @@ func resourceNodeV1() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
-			"raid": {
-				Type:     schema.TypeMap,
+			"raid_config": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+			"bios_settings": {
+				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
@@ -245,9 +251,6 @@ func resourceNodeV1Create(d *schema.ResourceData, meta interface{}) error {
 
 	// Clean node
 	if d.Get("clean").(bool) {
-<<<<<<< HEAD
-		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", nil, nil); err != nil {
-=======
 		if err := setRAIDConfig(client, d); err != nil {
 			return fmt.Errorf("fail to set raid config: %s", err)
 		}
@@ -258,7 +261,6 @@ func resourceNodeV1Create(d *schema.ResourceData, meta interface{}) error {
 		}
 
 		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", cleanSteps); err != nil {
->>>>>>> b73320f4... Add raid
 			return fmt.Errorf("could not clean: %s", err)
 		}
 	}
@@ -607,15 +609,13 @@ func changePowerState(client *gophercloud.ServiceClient, d *schema.ResourceData,
 	return nil
 }
 
-// Call Ironic's API and clean the raid config
+// Call Ironic's API to send request to change a Node's RAID config.
 func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (err error) {
 	var logicalDisks []nodes.LogicalDisk
 	var raid *baremetalhost.RAIDConfig
 
-	raidConfig := d.Get("raid").(map[string]interface{})
-	if err = mapstructure.Decode(raidConfig, &raid); err != nil {
-		return
-	}
+	raidConfig := d.Get("raid_config").(string)
+	json.Unmarshal([]byte(raidConfig), &raid)
 
 	// Build target for RAID configuration steps
 	logicalDisks, err = ironic.BuildTargetRAIDCfg(raid)
@@ -639,12 +639,36 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 	).ExtractErr()
 }
 
+func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.FirmwareConfig) (settings []map[string]string, err error) {
+	driver := d.Get("driver").(string)
+	driverInfo := d.Get("driver_info").(map)
+	driverAdress := strings.Join([]string{driver, "address"}, "_")
+
+	address := strings.Join([]string{driverAdress, driver_info[driverAdress]}, ":")
+	acc, err := bmc.NewAccessDetails(address, false)
+	if err != nil {
+		t.Fatalf("new AccessDetails failed: %v", err)
+	}
+
+	settings, err := acc.BuildBIOSSettings(c.firmware)
+	if (err != nil) != c.expectedError {
+		t.Fatalf("got unexpected error: %v", err)
+	}
+	return
+}
+
 func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
 	var raid *baremetalhost.RAIDConfig
+	var firmware *baremetalhost.FirmwareConfig
 
-	raidConfig := d.Get("raid").(map[string]interface{})
-	if err = mapstructure.Decode(raidConfig, &raid); err != nil {
-		return
+	raidConfig := d.Get("raid_config").(string)
+	if err = json.Unmarshal([]byte(raidConfig), &raid); err != nil {
+		return nil, err
+	}
+
+	biosSetings := d.Get("bios_settings").(string)
+	if err = json.Unmarshal([]byte(biosSetings), &firmware); err != nil {
+		return nil, err
 	}
 
 	// Build raid clean steps
@@ -652,6 +676,24 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raid)...)
 	} else if raid != nil {
 		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", d.Get("driver").(string))
+	}
+
+	settings, err := buildBIOSSettings(d, firmware)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(settings) != 0 {
+		cleanSteps = append(
+			cleanSteps,
+			nodes.CleanStep{
+				Interface: "bios",
+				Step:      "apply_configuration",
+				Args: map[string]interface{}{
+					"settings": settings,
+				},
+			},
+		)
 	}
 
 	// TODO: Add manual cleaning steps for host configuration
