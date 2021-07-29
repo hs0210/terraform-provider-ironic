@@ -658,11 +658,13 @@ func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.Fir
 }
 
 func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
-	var raid *baremetalhost.RAIDConfig
+	var targetRaid *baremetalhost.RAIDConfig
 	var firmware *baremetalhost.FirmwareConfig
 
+	raidInterface := d.Get("raid_interface").(string)
+
 	raidConfig := d.Get("raid_config").(string)
-	if err = json.Unmarshal([]byte(raidConfig), &raid); err != nil {
+	if err = json.Unmarshal([]byte(raidConfig), &targetRaid); err != nil {
 		return nil, err
 	}
 
@@ -673,7 +675,7 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 
 	// Build raid clean steps
 	if d.Get("raid_interface").(string) != "no-raid" {
-		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raid)...)
+		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)...)
 	} else if raid != nil {
 		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", d.Get("driver").(string))
 	}
