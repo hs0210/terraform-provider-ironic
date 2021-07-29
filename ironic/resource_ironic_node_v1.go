@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/gophercloud/gophercloud"
@@ -260,7 +261,7 @@ func resourceNodeV1Create(d *schema.ResourceData, meta interface{}) error {
 			return fmt.Errorf("fail to build raid clean steps: %s", err)
 		}
 
-		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", cleanSteps); err != nil {
+		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", cleanSteps, nil); err != nil {
 			return fmt.Errorf("could not clean: %s", err)
 		}
 	}
@@ -641,18 +642,20 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 
 func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.FirmwareConfig) (settings []map[string]string, err error) {
 	driver := d.Get("driver").(string)
-	driverInfo := d.Get("driver_info").(map)
+	driverInfo := d.Get("driver_info").(map[string]interface{})
 	driverAdress := strings.Join([]string{driver, "address"}, "_")
 
-	address := strings.Join([]string{driverAdress, driver_info[driverAdress]}, ":")
+	address := strings.Join([]string{driverAdress, driverInfo[driverAdress].(string)}, ":")
 	acc, err := bmc.NewAccessDetails(address, false)
 	if err != nil {
-		t.Fatalf("new AccessDetails failed: %v", err)
+		// t.Fatalf("new AccessDetails failed: %v", err)
+		return nil, err
 	}
 
-	settings, err := acc.BuildBIOSSettings(c.firmware)
-	if (err != nil) != c.expectedError {
-		t.Fatalf("got unexpected error: %v", err)
+	settings, err = acc.BuildBIOSSettings(firmwareConfig)
+	if err != nil {
+		// t.Fatalf("got unexpected error: %v", err)
+		return nil, err
 	}
 	return
 }
@@ -676,7 +679,7 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 	// Build raid clean steps
 	if d.Get("raid_interface").(string) != "no-raid" {
 		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)...)
-	} else if raid != nil {
+	} else if raidConfig != "" {
 		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", d.Get("driver").(string))
 	}
 
