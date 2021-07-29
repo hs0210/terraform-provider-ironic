@@ -285,7 +285,8 @@ func (workflow *provisionStateWorkflow) buildProvisionStateOpts(target nodes.Tar
 		}
 	}
 	if target == "clean" {
-		opts.CleanSteps = []nodes.CleanStep{}
+		// opts.CleanSteps = []nodes.CleanStep{}
+		opts.CleanSteps = workflow.configDrive.([]nodes.CleanStep)
 		// TODO if we want to actually clean, then we need clean_steps
 		// currently bmo does quite a lot of work to get raid cleaning working.
 		// https://github.com/metal3-io/baremetal-operator/blob/master/pkg/provisioner/ironic/ironic.go#L1249-L1292

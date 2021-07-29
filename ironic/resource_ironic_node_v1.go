@@ -1,6 +1,7 @@
 package ironic
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -9,6 +10,9 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	baremetalhost "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
+	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
 )
 
 // Schema resource definition for an Ironic node.
@@ -174,6 +178,16 @@ func resourceNodeV1() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
+			"raid_config": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+			"bios_settings": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
 		},
 	}
 }
@@ -237,7 +251,16 @@ func resourceNodeV1Create(d *schema.ResourceData, meta interface{}) error {
 
 	// Clean node
 	if d.Get("clean").(bool) {
-		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", nil, nil); err != nil {
+		if err := setRAIDConfig(client, d); err != nil {
+			return fmt.Errorf("fail to set raid config: %s", err)
+		}
+
+		var cleanSteps []nodes.CleanStep
+		if cleanSteps, err = buildManualCleaningSteps(d); err != nil {
+			return fmt.Errorf("fail to build raid clean steps: %s", err)
+		}
+
+		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", cleanSteps); err != nil {
 			return fmt.Errorf("could not clean: %s", err)
 		}
 	}
@@ -584,4 +607,97 @@ func changePowerState(client *gophercloud.ServiceClient, d *schema.ResourceData,
 	}
 
 	return nil
+}
+
+// Call Ironic's API to send request to change a Node's RAID config.
+func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (err error) {
+	var logicalDisks []nodes.LogicalDisk
+	var raid *baremetalhost.RAIDConfig
+
+	raidConfig := d.Get("raid_config").(string)
+	json.Unmarshal([]byte(raidConfig), &raid)
+
+	// Build target for RAID configuration steps
+	logicalDisks, err = ironic.BuildTargetRAIDCfg(raid)
+	if len(logicalDisks) == 0 || err != nil {
+		return
+	}
+
+	// set root volume
+	if len(d.Get("root_device").(map[string]interface{})) == 0 {
+		logicalDisks[0].IsRootVolume = new(bool)
+		*logicalDisks[0].IsRootVolume = true
+	} else {
+		log.Printf("rootDeviceHints is used, the first volume of raid will not be set to root")
+	}
+
+	// Set target for RAID configuration steps
+	return nodes.SetRAIDConfig(
+		client,
+		d.Id(),
+		nodes.RAIDConfigOpts{LogicalDisks: logicalDisks},
+	).ExtractErr()
+}
+
+func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.FirmwareConfig) (settings []map[string]string, err error) {
+	driver := d.Get("driver").(string)
+	driverInfo := d.Get("driver_info").(map)
+	driverAdress := strings.Join([]string{driver, "address"}, "_")
+
+	address := strings.Join([]string{driverAdress, driver_info[driverAdress]}, ":")
+	acc, err := bmc.NewAccessDetails(address, false)
+	if err != nil {
+		t.Fatalf("new AccessDetails failed: %v", err)
+	}
+
+	settings, err := acc.BuildBIOSSettings(c.firmware)
+	if (err != nil) != c.expectedError {
+		t.Fatalf("got unexpected error: %v", err)
+	}
+	return
+}
+
+func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
+	var targetRaid *baremetalhost.RAIDConfig
+	var firmware *baremetalhost.FirmwareConfig
+
+	raidInterface := d.Get("raid_interface").(string)
+
+	raidConfig := d.Get("raid_config").(string)
+	if err = json.Unmarshal([]byte(raidConfig), &targetRaid); err != nil {
+		return nil, err
+	}
+
+	biosSetings := d.Get("bios_settings").(string)
+	if err = json.Unmarshal([]byte(biosSetings), &firmware); err != nil {
+		return nil, err
+	}
+
+	// Build raid clean steps
+	if d.Get("raid_interface").(string) != "no-raid" {
+		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)...)
+	} else if raid != nil {
+		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", d.Get("driver").(string))
+	}
+
+	settings, err := buildBIOSSettings(d, firmware)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(settings) != 0 {
+		cleanSteps = append(
+			cleanSteps,
+			nodes.CleanStep{
+				Interface: "bios",
+				Step:      "apply_configuration",
+				Args: map[string]interface{}{
+					"settings": settings,
+				},
+			},
+		)
+	}
+
+	// TODO: Add manual cleaning steps for host configuration
+	return
 }
