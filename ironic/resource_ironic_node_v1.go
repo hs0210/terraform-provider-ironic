@@ -677,11 +677,11 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 	}
 
 	// Build raid clean steps
-	if d.Get("raid_interface").(string) != "no-raid" {
-		cleanSteps = append(cleanSteps, ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)...)
-	} else if raidConfig != "" {
-		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", d.Get("driver").(string))
+	raidCleanSteps, err := ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)
+	if err != nil {
+		return nil, err
 	}
+	cleanSteps = append(cleanSteps, raidCleanSteps...)
 
 	settings, err := buildBIOSSettings(d, firmware)
 	if err != nil {
