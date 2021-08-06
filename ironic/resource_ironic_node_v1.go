@@ -643,9 +643,9 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.FirmwareConfig) (settings []map[string]string, err error) {
 	driver := d.Get("driver").(string)
 	driverInfo := d.Get("driver_info").(map[string]interface{})
-	driverAdress := strings.Join([]string{driver, "address"}, "_")
+	driverAddress := strings.Join([]string{driver, "address"}, "_")
 
-	address := strings.Join([]string{driverAdress, driverInfo[driverAdress].(string)}, ":")
+	address := strings.Join([]string{driver, driverInfo[driverAddress].(string)}, "://")
 	acc, err := bmc.NewAccessDetails(address, false)
 	if err != nil {
 		// t.Fatalf("new AccessDetails failed: %v", err)
@@ -667,38 +667,42 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 	raidInterface := d.Get("raid_interface").(string)
 
 	raidConfig := d.Get("raid_config").(string)
-	if err = json.Unmarshal([]byte(raidConfig), &targetRaid); err != nil {
-		return nil, err
+	if raidConfig != "" {
+		if err = json.Unmarshal([]byte(raidConfig), &targetRaid); err != nil {
+			return nil, err
+		}
+
+		// Build raid clean steps
+		raidCleanSteps, err := ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)
+		if err != nil {
+			return nil, err
+		}
+		cleanSteps = append(cleanSteps, raidCleanSteps...)
 	}
 
 	biosSetings := d.Get("bios_settings").(string)
-	if err = json.Unmarshal([]byte(biosSetings), &firmware); err != nil {
-		return nil, err
-	}
+	if biosSetings != "" {
+		if err = json.Unmarshal([]byte(biosSetings), &firmware); err != nil {
+			return nil, err
+		}
 
-	// Build raid clean steps
-	raidCleanSteps, err := ironic.BuildRAIDCleanSteps(raidInterface, targetRaid, nil)
-	if err != nil {
-		return nil, err
-	}
-	cleanSteps = append(cleanSteps, raidCleanSteps...)
+		settings, err := buildBIOSSettings(d, firmware)
+		if err != nil {
+			return nil, err
+		}
 
-	settings, err := buildBIOSSettings(d, firmware)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(settings) != 0 {
-		cleanSteps = append(
-			cleanSteps,
-			nodes.CleanStep{
-				Interface: "bios",
-				Step:      "apply_configuration",
-				Args: map[string]interface{}{
-					"settings": settings,
+		if len(settings) != 0 {
+			cleanSteps = append(
+				cleanSteps,
+				nodes.CleanStep{
+					Interface: "bios",
+					Step:      "apply_configuration",
+					Args: map[string]interface{}{
+						"settings": settings,
+					},
 				},
-			},
-		)
+			)
+		}
 	}
 
 	// TODO: Add manual cleaning steps for host configuration
