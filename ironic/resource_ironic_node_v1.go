@@ -16,6 +16,11 @@ import (
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
 )
 
+const (
+	noRAIDInterface       string = "no-raid"
+	softwareRAIDInterface string = "agent"
+)
+
 // Schema resource definition for an Ironic node.
 func resourceNodeV1() *schema.Resource {
 	return &schema.Resource{
@@ -616,7 +621,15 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 	var raid *baremetalhost.RAIDConfig
 
 	raidConfig := d.Get("raid_config").(string)
-	json.Unmarshal([]byte(raidConfig), &raid)
+	err = json.Unmarshal([]byte(raidConfig), &raid)
+	if err != nil {
+		return
+	}
+
+	err = checkRAIDConfigure(d.Get("raid_interface").(string), raid)
+	if err != nil {
+		return
+	}
 
 	// Build target for RAID configuration steps
 	logicalDisks, err = ironic.BuildTargetRAIDCfg(raid)
@@ -624,7 +637,7 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 		return
 	}
 
-	// set root volume
+	// Set root volume
 	if len(d.Get("root_device").(map[string]interface{})) == 0 {
 		logicalDisks[0].IsRootVolume = new(bool)
 		*logicalDisks[0].IsRootVolume = true
@@ -648,13 +661,11 @@ func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *baremetalhost.Fir
 	address := strings.Join([]string{driver, driverInfo[driverAddress].(string)}, "://")
 	acc, err := bmc.NewAccessDetails(address, false)
 	if err != nil {
-		// t.Fatalf("new AccessDetails failed: %v", err)
 		return nil, err
 	}
 
 	settings, err = acc.BuildBIOSSettings(firmwareConfig)
 	if err != nil {
-		// t.Fatalf("got unexpected error: %v", err)
 		return nil, err
 	}
 	return
@@ -705,6 +716,23 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 		}
 	}
 
-	// TODO: Add manual cleaning steps for host configuration
 	return
+}
+
+func checkRAIDConfigure(raidInterface string, raid *baremetalhost.RAIDConfig) error {
+	switch raidInterface {
+	case noRAIDInterface:
+		if raid != nil && (len(raid.HardwareRAIDVolumes) != 0 || len(raid.SoftwareRAIDVolumes) != 0) {
+			return fmt.Errorf("raid settings are defined, but the node's driver %s does not support RAID", raidInterface)
+		}
+	case softwareRAIDInterface:
+		if raid != nil && len(raid.HardwareRAIDVolumes) != 0 {
+			return fmt.Errorf("node's driver %s does not support hardware RAID", raidInterface)
+		}
+	default:
+		if raid != nil && len(raid.HardwareRAIDVolumes) == 0 && len(raid.SoftwareRAIDVolumes) != 0 {
+			return fmt.Errorf("node's driver %s does not support software RAID", raidInterface)
+		}
+	}
+	return nil
 }
