@@ -8,5 +8,13 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.0
 	github.com/hashicorp/go-version v1.3.0
 	github.com/hashicorp/terraform-plugin-sdk v1.17.2
+	github.com/metal3-io/baremetal-operator v0.0.0-20211203102512-3572353e42e5
+	github.com/metal3-io/baremetal-operator/apis v0.0.0
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
+)
+
+replace (
+	github.com/metal3-io/baremetal-operator/apis => github.com/metal3-io/baremetal-operator/apis v0.0.0-20211203102512-3572353e42e5
+	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0-20211203102512-3572353e42e5
 )
