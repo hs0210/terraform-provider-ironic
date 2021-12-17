@@ -11,7 +11,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
 )
 
@@ -198,9 +197,8 @@ func resourceNodeV1() *schema.Resource {
 				Computed: true,
 			},
 			"bios_settings": {
-				Type:     schema.TypeString,
+				Type:     schema.TypeList,
 				Optional: true,
-				Computed: true,
 			},
 		},
 	}
@@ -665,24 +663,9 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 	).ExtractErr()
 }
 
-// buildBIOSSettings builds bios settings for BIOS clean steps
-func buildBIOSSettings(d *schema.ResourceData, firmwareConfig *bmc.FirmwareConfig) (settings []map[string]string, err error) {
-	acc, err := bmc.NewAccessDetails(d.Get("bmc_address").(string), d.Get("bmc_disable_certificate_verification").(bool))
-	if err != nil {
-		return nil, err
-	}
-
-	settings, err = acc.BuildBIOSSettings(firmwareConfig)
-	if err != nil {
-		return nil, err
-	}
-	return
-}
-
 // buildManualCleaningSteps builds the clean steps for RAID and BIOS configuration
 func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
 	var targetRaid *metal3v1alpha1.RAIDConfig
-	var firmware *bmc.FirmwareConfig
 
 	raidInterface := d.Get("raid_interface").(string)
 
@@ -700,29 +683,18 @@ func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanS
 		cleanSteps = append(cleanSteps, raidCleanSteps...)
 	}
 
-	biosSetings := d.Get("bios_settings").(string)
-	if biosSetings != "" {
-		if err = json.Unmarshal([]byte(biosSetings), &firmware); err != nil {
-			return nil, err
-		}
-
-		settings, err := buildBIOSSettings(d, firmware)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(settings) != 0 {
-			cleanSteps = append(
-				cleanSteps,
-				nodes.CleanStep{
-					Interface: "bios",
-					Step:      "apply_configuration",
-					Args: map[string]interface{}{
-						"settings": settings,
-					},
+	biosSetings := d.Get("bios_settings").([]map[string]string)
+	if len(biosSetings) != 0 {
+		cleanSteps = append(
+			cleanSteps,
+			nodes.CleanStep{
+				Interface: "bios",
+				Step:      "apply_configuration",
+				Args: map[string]interface{}{
+					"settings": biosSetings,
 				},
-			)
-		}
+			},
+		)
 	}
 
 	return
