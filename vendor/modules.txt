@@ -298,7 +298,6 @@ github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/hardwaredetails
 ## explicit
 github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1
 # github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0 => github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0-20220209171559-d3bcdd79e511
-## explicit
 github.com/metal3-io/baremetal-operator/pkg/hardwareutils/bmc
 # github.com/mitchellh/cli v1.1.2
 github.com/mitchellh/cli
