@@ -508,7 +508,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(data provisioner.Management
 		return
 
 	case nodes.Active:
-		// The host is already running, maybe it's a master?
+		// The host is already running, maybe it's a controlplane host?
 		p.debugLog.Info("have active host", "image_source", ironicNode.InstanceInfo["image_source"])
 		fallthrough
 
@@ -1257,7 +1257,7 @@ func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, iro
 
 // Prepare remove existing configuration and set new configuration.
 // If `started` is true,  it means that we successfully executed `tryChangeNodeProvisionState`.
-func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared bool, force bool) (result provisioner.Result, started bool, err error) {
 	bmcAccess, err := p.bmcAccess()
 	if err != nil {
 		result, err = transientError(err)
@@ -1308,9 +1308,9 @@ func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared boo
 
 	case nodes.CleanFail:
 		// When clean failed, we need to clean host provisioning settings.
-		// If unprepared is false, means the settings aren't cleared.
+		// If force is false, it means the settings aren't cleared.
 		// So we can't set the node's state to manageable, until the settings are cleared.
-		if !unprepared {
+		if !force {
 			result, err = operationFailed(ironicNode.LastError)
 			return
 		}
