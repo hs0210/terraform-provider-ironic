@@ -14,12 +14,6 @@ import (
 
 func TestAccIronicNode(t *testing.T) {
 	var node nodes.Node
-	var raidConfig, targetRAIDConfig map[string]interface{}
-
-	raidConfig = make(map[string]interface{})
-	targetRAIDConfig = make(map[string]interface{})
-	raidConfig["SoftwareRAIDVolume"] = map[string]string{"Level": "1"}
-	targetRAIDConfig["target_raid_config"] = raidConfig
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -29,7 +23,7 @@ func TestAccIronicNode(t *testing.T) {
 
 			// Create a node and check that it exists
 			{
-				Config: testAccNodeResource("", nil),
+				Config: testAccNodeResource(""),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -40,7 +34,7 @@ func TestAccIronicNode(t *testing.T) {
 
 			// Ensure node is manageable
 			{
-				Config: testAccNodeResource("manage = true", nil),
+				Config: testAccNodeResource("manage = true"),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -50,7 +44,7 @@ func TestAccIronicNode(t *testing.T) {
 
 			// Inspect the node
 			{
-				Config: testAccNodeResource("inspect = true", nil),
+				Config: testAccNodeResource("inspect = true"),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -62,7 +56,7 @@ func TestAccIronicNode(t *testing.T) {
 			{
 				Config: testAccNodeResource(`
 					"clean = true"
-					raid_interface = agent`, targetRAIDConfig),
+					raid_interface = agent`),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -87,7 +81,7 @@ func TestAccIronicNode(t *testing.T) {
 
 			// Change the node's power state to 'power off'.
 			{
-				Config: testAccNodeResource("target_power_state = \"power off\"", nil),
+				Config: testAccNodeResource("target_power_state = \"power off\""),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -102,7 +96,7 @@ func TestAccIronicNode(t *testing.T) {
 			// rebooting, power_state goes to power_on and terraform exits
 			// successfully.
 			{
-				Config: testAccNodeResource("target_power_state = \"rebooting\"", nil),
+				Config: testAccNodeResource("target_power_state = \"rebooting\""),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -160,7 +154,7 @@ func testAccNodeDestroy(state *terraform.State) error {
 	return nil
 }
 
-func testAccNodeResource(extraValue string, targetRAIDConfig map[string]interface{}) string {
+func testAccNodeResource(extraValue string) string {
 	return fmt.Sprintf(`resource "ironic_node_v1" "node-0" {
 			name = "node-0"
 			driver = "fake-hardware"
@@ -179,7 +173,10 @@ func testAccNodeResource(extraValue string, targetRAIDConfig map[string]interfac
 				ipmi_password  = "admin"
 			}
 
+			target_raid_config = {
+				softwareRAIDVolumes = ["level": "1"]
+			}
+
 			%s
-			%+v
-		}`, extraValue, targetRAIDConfig)
+		}`, extraValue)
 }
