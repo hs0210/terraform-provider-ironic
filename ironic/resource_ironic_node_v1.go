@@ -1,6 +1,7 @@
 package ironic
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 )
 
 // Schema resource definition for an Ironic node.
@@ -174,6 +176,16 @@ func resourceNodeV1() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
+			"raid_config": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+			"bios_settings": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
 		},
 	}
 }
@@ -237,7 +249,16 @@ func resourceNodeV1Create(d *schema.ResourceData, meta interface{}) error {
 
 	// Clean node
 	if d.Get("clean").(bool) {
-		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", nil, nil); err != nil {
+		if err := setRAIDConfig(client, d); err != nil {
+			return fmt.Errorf("fail to set raid config: %s", err)
+		}
+
+		var cleanSteps []nodes.CleanStep
+		if cleanSteps, err = buildManualCleaningSteps(d); err != nil {
+			return fmt.Errorf("fail to build raid clean steps: %s", err)
+		}
+
+		if err := ChangeProvisionStateToTarget(client, d.Id(), "clean", cleanSteps, nil); err != nil {
 			return fmt.Errorf("could not clean: %s", err)
 		}
 	}
@@ -584,4 +605,88 @@ func changePowerState(client *gophercloud.ServiceClient, d *schema.ResourceData,
 	}
 
 	return nil
+}
+
+// setRAIDConfig calls ironic's API to send request to change a Node's RAID config.
+func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (err error) {
+	var logicalDisks []nodes.LogicalDisk
+	var raid *metal3v1alpha1.RAIDConfig
+
+	raidConfig := d.Get("raid_config").(string)
+	if raidConfig == "" {
+		return nil
+	}
+
+	err = json.Unmarshal([]byte(raidConfig), &raid)
+	if err != nil {
+		return
+	}
+
+	_, err = CheckRAIDInterface(d.Get("raid_interface").(string), raid, nil)
+	if err != nil {
+		return
+	}
+
+	// Build target for RAID configuration steps
+	logicalDisks, err = BuildTargetRAIDCfg(raid)
+	if len(logicalDisks) == 0 || err != nil {
+		return
+	}
+
+	// Set root volume
+	if len(d.Get("root_device").(map[string]interface{})) == 0 {
+		logicalDisks[0].IsRootVolume = new(bool)
+		*logicalDisks[0].IsRootVolume = true
+	} else {
+		log.Printf("rootDeviceHints is used, the first volume of raid will not be set to root")
+	}
+
+	// Set target for RAID configuration steps
+	return nodes.SetRAIDConfig(
+		client,
+		d.Id(),
+		nodes.RAIDConfigOpts{LogicalDisks: logicalDisks},
+	).ExtractErr()
+}
+
+// buildManualCleaningSteps builds the clean steps for RAID and BIOS configuration
+func buildManualCleaningSteps(d *schema.ResourceData) (cleanSteps []nodes.CleanStep, err error) {
+	var targetRaid *metal3v1alpha1.RAIDConfig
+	var settings []map[string]string
+
+	raidInterface := d.Get("raid_interface").(string)
+
+	raidConfig := d.Get("raid_config").(string)
+	if raidConfig != "" {
+		if err = json.Unmarshal([]byte(raidConfig), &targetRaid); err != nil {
+			return nil, err
+		}
+
+		// Build raid clean steps
+		raidCleanSteps, err := BuildRAIDCleanSteps(raidInterface, targetRaid, nil)
+		if err != nil {
+			return nil, err
+		}
+		cleanSteps = append(cleanSteps, raidCleanSteps...)
+	}
+
+	biosSetings := d.Get("bios_settings").(string)
+	if biosSetings != "" {
+		if err = json.Unmarshal([]byte(biosSetings), &settings); err != nil {
+			return nil, err
+		}
+
+		cleanSteps = append(
+			cleanSteps,
+			nodes.CleanStep{
+				Interface: "bios",
+				Step:      "apply_configuration",
+				Args: map[string]interface{}{
+					"settings": settings,
+				},
+			},
+		)
+	}
+
+	return
 }
