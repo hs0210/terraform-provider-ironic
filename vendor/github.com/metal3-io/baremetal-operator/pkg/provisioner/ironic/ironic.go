@@ -14,7 +14,6 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/yaml"
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
@@ -28,7 +27,6 @@ var (
 	deprovisionRequeueDelay   = time.Second * 10
 	provisionRequeueDelay     = time.Second * 10
 	powerRequeueDelay         = time.Second * 10
-	subscriptionRequeueDelay  = time.Second * 10
 	introspectionRequeueDelay = time.Second * 15
 	softPowerOffTimeout       = time.Second * 180
 )
@@ -973,6 +971,7 @@ func (p *ironicProvisioner) GetFirmwareSettings(includeSchema bool) (settings me
 				MinLength:       v.MinLength,
 				MaxLength:       v.MaxLength,
 				ReadOnly:        v.ReadOnly,
+				ResetRequired:   v.ResetRequired,
 				Unique:          v.Unique,
 			}
 		}
@@ -1150,22 +1149,22 @@ func (p *ironicProvisioner) buildManualCleaningSteps(bmcAccess bmc.AccessDetails
 		bmcConfig := bmc.FirmwareConfig(*data.FirmwareConfig)
 		firmwareConfig = &bmcConfig
 	}
-	fwConfigSettings, err := bmcAccess.BuildBIOSSettings(firmwareConfig)
+	bmcsettings, err := bmcAccess.BuildBIOSSettings(firmwareConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	var newSettings []map[string]interface{}
+	var newSettings []map[string]string
 	if data.ActualFirmwareSettings != nil {
 		// If we have the current settings from Ironic, update the settings to contain:
 		// 1. settings converted by BMC drivers that are different than current settings
-		for _, fwConfigSetting := range fwConfigSettings {
-			if val, exists := data.ActualFirmwareSettings[fwConfigSetting["name"]]; exists {
-				if fwConfigSetting["value"] != val {
-					newSettings = buildFirmwareSettings(newSettings, fwConfigSetting["name"], intstr.FromString(fwConfigSetting["value"]))
+		for _, bmcsetting := range bmcsettings {
+			if val, exists := data.ActualFirmwareSettings[bmcsetting["name"]]; exists {
+				if bmcsetting["value"] != val {
+					newSettings = buildFirmwareSettings(newSettings, bmcsetting["name"], bmcsetting["value"])
 				}
 			} else {
-				p.log.Info("name converted from bmc driver not found in firmware settings", "name", fwConfigSetting["name"], "node", p.nodeID)
+				p.log.Info("name converted from bmc driver not found in firmware settings", "name", bmcsetting["name"], "node", p.nodeID)
 			}
 		}
 
@@ -1173,20 +1172,14 @@ func (p *ironicProvisioner) buildManualCleaningSteps(bmcAccess bmc.AccessDetails
 		if data.TargetFirmwareSettings != nil {
 			for k, v := range data.TargetFirmwareSettings {
 				if data.ActualFirmwareSettings[k] != v.String() {
-					// Skip changing this setting if it was defined in the vendor specific settings
-					for _, fwConfigSetting := range fwConfigSettings {
-						if fwConfigSetting["name"] == k {
-							continue
-						}
-					}
-					newSettings = buildFirmwareSettings(newSettings, k, v)
+					newSettings = buildFirmwareSettings(newSettings, k, v.String())
 				}
 			}
 		}
 	} else {
-		// use only the settings converted by bmc driver. Note that these settings are all strings
-		for _, fwConfigSetting := range fwConfigSettings {
-			newSettings = buildFirmwareSettings(newSettings, fwConfigSetting["name"], intstr.FromString(fwConfigSetting["value"]))
+		// use only the settings converted by bmc driver
+		for _, bmcsetting := range bmcsettings {
+			newSettings = append(newSettings, bmcsetting)
 		}
 	}
 
@@ -1209,7 +1202,7 @@ func (p *ironicProvisioner) buildManualCleaningSteps(bmcAccess bmc.AccessDetails
 	return
 }
 
-func buildFirmwareSettings(settings []map[string]interface{}, name string, value intstr.IntOrString) []map[string]interface{} {
+func buildFirmwareSettings(settings []map[string]string, name string, value string) []map[string]string {
 	// if name already exists, don't add it
 	for _, setting := range settings {
 		if setting["name"] == name {
@@ -1217,13 +1210,11 @@ func buildFirmwareSettings(settings []map[string]interface{}, name string, value
 		}
 	}
 
-	if value.Type == intstr.Int {
-		settings = append(settings, map[string]interface{}{"name": name, "value": value.IntValue()})
-	} else {
-		settings = append(settings, map[string]interface{}{"name": name, "value": value.String()})
-	}
-
-	return settings
+	return append(settings,
+		map[string]string{
+			"name":  name,
+			"value": value},
+	)
 }
 
 func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, ironicNode *nodes.Node, data provisioner.PrepareData) (success bool, result provisioner.Result, err error) {
@@ -1873,39 +1864,4 @@ func (p *ironicProvisioner) loadBusyHosts() (hosts map[string]struct{}, err erro
 	}
 
 	return hosts, nil
-}
-
-func (p *ironicProvisioner) AddBMCEventSubscriptionForNode(subscription *metal3v1alpha1.BMCEventSubscription, httpHeaders provisioner.HTTPHeaders) (result provisioner.Result, err error) {
-	newSubscription, err := nodes.CreateSubscription(
-		p.client,
-		p.nodeID,
-		nodes.CallVendorPassthruOpts{
-			Method: "create_subscription",
-		},
-		nodes.CreateSubscriptionOpts{
-			Destination: subscription.Spec.Destination,
-			Context:     subscription.Spec.Context,
-			HttpHeaders: httpHeaders,
-		}).Extract()
-	if err != nil {
-		return provisioner.Result{}, err
-	}
-
-	subscription.Status.SubscriptionID = newSubscription.Id
-	return operationComplete()
-}
-
-func (p *ironicProvisioner) RemoveBMCEventSubscriptionForNode(subscription metal3v1alpha1.BMCEventSubscription) (result provisioner.Result, err error) {
-	method := nodes.CallVendorPassthruOpts{
-		Method: "delete_subscription",
-	}
-	opts := nodes.DeleteSubscriptionOpts{
-		Id: subscription.Status.SubscriptionID,
-	}
-	err = nodes.DeleteSubscription(p.client, p.nodeID, method, opts).ExtractErr()
-
-	if err != nil {
-		return provisioner.Result{RequeueAfter: subscriptionRequeueDelay}, err
-	}
-	return operationComplete()
 }

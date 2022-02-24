@@ -75,7 +75,7 @@ func (a *iRMCAccessDetails) BIOSInterface() string {
 }
 
 func (a *iRMCAccessDetails) BootInterface() string {
-	return "ipxe"
+	return "pxe"
 }
 
 func (a *iRMCAccessDetails) ManagementInterface() string {
