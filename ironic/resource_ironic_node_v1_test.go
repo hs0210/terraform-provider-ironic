@@ -173,7 +173,7 @@ func testAccNodeResource(extraValue string) string {
 			}
 
 			target_raid_config = {
-				softwareRAIDVolumes = ["level": "1"]
+				logical_disks = [{"raid_level": "1", "controller": "software"}]
 			}
 
 			%s
