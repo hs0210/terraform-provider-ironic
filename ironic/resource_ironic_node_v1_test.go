@@ -54,9 +54,7 @@ func TestAccIronicNode(t *testing.T) {
 
 			// Clean the node
 			{
-				Config: testAccNodeResource(`
-					"clean = true"
-					raid_interface = agent`),
+				Config: testAccNodeResource("clean = true"),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
@@ -166,6 +164,7 @@ func testAccNodeResource(extraValue string) string {
 			power_interface = "fake"
 			resource_class = "baremetal"
 			vendor_interface = "no-vendor"
+			raid_interface = "agent"
 
 			driver_info = {
 				ipmi_port      = "6230"
