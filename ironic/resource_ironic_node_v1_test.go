@@ -71,7 +71,7 @@ func TestAccIronicNode(t *testing.T) {
 				Config: testAccNodeResource(`
 					target_power_state = "power on"
 					power_state_timeout = 10
-				`, nil),
+				`),
 				Check: resource.ComposeTestCheckFunc(
 					CheckNodeExists("ironic_node_v1.node-0", &node),
 					resource.TestCheckResourceAttr("ironic_node_v1.node-0",
