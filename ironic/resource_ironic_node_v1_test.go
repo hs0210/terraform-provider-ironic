@@ -14,12 +14,12 @@ import (
 
 func TestAccIronicNode(t *testing.T) {
 	var node nodes.Node
-	var targetRAIDConfig map[string]interface{}
+	var raidConfig, targetRAIDConfig map[string]interface{}
 
-	// raidConfig = make(map[string]interface{})
+	raidConfig = make(map[string]interface{})
 	targetRAIDConfig = make(map[string]interface{})
-	// raidConfig["SoftwareRAIDVolume"] = map[string]string{"Level": "1"}
-	targetRAIDConfig["SoftwareRAIDVolume"] = map[string]string{"Level": "1"}
+	raidConfig["SoftwareRAIDVolume"] = map[string]string{"Level": "1"}
+	targetRAIDConfig["target_raid_config"] = raidConfig
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
