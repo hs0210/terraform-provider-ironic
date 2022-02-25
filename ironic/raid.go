@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
+	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/devicehints"
 	"github.com/pkg/errors"
 )
