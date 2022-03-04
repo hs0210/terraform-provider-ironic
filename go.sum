@@ -353,6 +353,8 @@ github.com/hashicorp/yamux v0.0.0-20180604194846-3520598351bb/go.mod h1:+NfK9FKe
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d h1:kJCB4vdITiW1eC1vq2e6IsrXKrZit1bv/TDYFGMp4BQ=
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
+github.com/hs0210/baremetal-operator v0.5.2 h1:cQV56iDPH8RSzHSNZoExLIZl5yTpi4zRXN6y2kZF2Kc=
+github.com/hs0210/baremetal-operator v0.5.2/go.mod h1:fKoRJ8B07os5e+LFLvhFSS2g8nTODZW/J5jKw4dsQ18=
 github.com/huandu/xstrings v1.3.2 h1:L18LIDzqlW6xN2rEkpdV8+oL/IXWJ1APd+vsdYy4Wdw=
 github.com/huandu/xstrings v1.3.2/go.mod h1:y5/lhBue+AyNmUVz9RLU9xbLR0o4KIIExikq4ovT0aE=
 github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
@@ -424,8 +426,6 @@ github.com/mattn/go-runewidth v0.0.4/go.mod h1:LwmH8dsx7+W8Uxz3IHJYH5QSwggIsqBzp
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 h1:I0XW9+e1XWDxdcEniV4rQAIOPUGDq67JSCiRCgGCZLI=
 github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369/go.mod h1:BSXmuO+STAnVfrANrmjBb36TMTDstsz7MSK+HVaYKv4=
-github.com/metal3-io/baremetal-operator v0.0.0-20220216092208-3612e86973f1 h1:TC9DBTbfyJZUMJSvrZ2JctsMle0WZJdlDMfxKGve+E4=
-github.com/metal3-io/baremetal-operator v0.0.0-20220216092208-3612e86973f1/go.mod h1:fKoRJ8B07os5e+LFLvhFSS2g8nTODZW/J5jKw4dsQ18=
 github.com/metal3-io/baremetal-operator/apis v0.0.0-20220216092208-3612e86973f1 h1:rpnzZOq8pj1XWWXTyCxPUixl1/o4twzBU0NiiQhmb0Q=
 github.com/metal3-io/baremetal-operator/apis v0.0.0-20220216092208-3612e86973f1/go.mod h1:Kyik+ziiZLez6p4ZUwT0iO6T8F7YygaHVhCBx//KhLI=
 github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0-20220216092208-3612e86973f1 h1:xELVIU8JfMUfbeUz9gIfW8LFvYOO7YefX5dRqgPhsC8=

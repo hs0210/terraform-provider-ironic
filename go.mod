@@ -10,11 +10,11 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk v1.17.2
 	github.com/metal3-io/baremetal-operator v0.0.0-20220216092208-3612e86973f1
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
-	github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 )
 
 replace (
+	github.com/metal3-io/baremetal-operator => github.com/hs0210/baremetal-operator v0.5.2
 	github.com/metal3-io/baremetal-operator/apis => github.com/metal3-io/baremetal-operator/apis v0.0.0-20220216092208-3612e86973f1
 	github.com/metal3-io/baremetal-operator/pkg/hardwareutils => github.com/metal3-io/baremetal-operator/pkg/hardwareutils v0.0.0-20220216092208-3612e86973f1
 )

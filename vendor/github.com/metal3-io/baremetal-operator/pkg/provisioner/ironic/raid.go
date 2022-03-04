@@ -19,7 +19,7 @@ const (
 
 // setTargetRAIDCfg set the RAID settings to the ironic Node for RAID configuration steps
 func setTargetRAIDCfg(p *ironicProvisioner, raidInterface string, ironicNode *nodes.Node, data provisioner.PrepareData) (provisioner.Result, error) {
-	err := checkRAIDConfigure(raidInterface, data.TargetRAIDConfig)
+	targetRaidInterface, err := CheckRAIDInterface(raidInterface, data.TargetRAIDConfig, data.ActualRAIDConfig)
 	if err != nil {
 		return operationFailed(err.Error())
 	}
@@ -41,6 +41,13 @@ func setTargetRAIDCfg(p *ironicProvisioner, raidInterface string, ironicNode *no
 		*logicalDisks[0].IsRootVolume = true
 	} else {
 		p.log.Info("rootDeviceHints is used, the first volume of raid will not be set to root")
+	}
+
+	updater := updateOptsBuilder(p.debugLog)
+	updater.SetTopLevelOpt("raid_interface", targetRaidInterface, ironicNode.RAIDInterface)
+	success, result, err := p.tryUpdateNode(ironicNode, updater)
+	if !success {
+		return result, err
 	}
 
 	// Set target for RAID configuration steps
@@ -178,26 +185,22 @@ func buildTargetSoftwareRAIDCfg(volumes []metal3v1alpha1.SoftwareRAIDVolume) (lo
 
 // BuildRAIDCleanSteps build the clean steps for RAID configuration from BaremetalHost spec
 func BuildRAIDCleanSteps(raidInterface string, target *metal3v1alpha1.RAIDConfig, actual *metal3v1alpha1.RAIDConfig) (cleanSteps []nodes.CleanStep, err error) {
-	err = checkRAIDConfigure(raidInterface, target)
+	_, err = CheckRAIDInterface(raidInterface, target, actual)
 	if err != nil {
 		return nil, err
 	}
 
-	// No RAID
-	if raidInterface == noRAIDInterface {
-		return
-	}
-
 	// Software RAID
-	if raidInterface == softwareRAIDInterface {
+	if target != nil && target.SoftwareRAIDVolumes != nil {
 		// Ignore HardwareRAIDVolumes
-		if target != nil {
-			target.HardwareRAIDVolumes = nil
-		}
+		target.HardwareRAIDVolumes = nil
 		if actual != nil {
 			actual.HardwareRAIDVolumes = nil
 		}
 		if reflect.DeepEqual(target, actual) {
+			return
+		}
+		if len(target.SoftwareRAIDVolumes) == 0 && (actual == nil || len(actual.SoftwareRAIDVolumes) == 0) {
 			return
 		}
 
@@ -216,7 +219,7 @@ func BuildRAIDCleanSteps(raidInterface string, target *metal3v1alpha1.RAIDConfig
 		)
 
 		// If software raid configuration is empty, only need to clear old configuration
-		if target == nil || len(target.SoftwareRAIDVolumes) == 0 {
+		if len(target.SoftwareRAIDVolumes) == 0 {
 			return
 		}
 
@@ -233,7 +236,7 @@ func BuildRAIDCleanSteps(raidInterface string, target *metal3v1alpha1.RAIDConfig
 	// Hardware RAID
 	// If hardware RAID configuration is nil,
 	// keep old hardware RAID configuration
-	if target == nil || target.HardwareRAIDVolumes == nil {
+	if raidInterface == noRAIDInterface || target == nil || target.HardwareRAIDVolumes == nil {
 		return
 	}
 
@@ -273,20 +276,30 @@ func BuildRAIDCleanSteps(raidInterface string, target *metal3v1alpha1.RAIDConfig
 	return
 }
 
-func checkRAIDConfigure(raidInterface string, raid *metal3v1alpha1.RAIDConfig) error {
-	switch raidInterface {
-	case noRAIDInterface:
-		if raid != nil && (len(raid.HardwareRAIDVolumes) != 0 || len(raid.SoftwareRAIDVolumes) != 0) {
-			return fmt.Errorf("raid settings are defined, but the node's driver %s does not support RAID", raidInterface)
-		}
-	case softwareRAIDInterface:
-		if raid != nil && len(raid.HardwareRAIDVolumes) != 0 {
-			return fmt.Errorf("node's driver %s does not support hardware RAID", raidInterface)
-		}
-	default:
-		if raid != nil && len(raid.HardwareRAIDVolumes) == 0 && len(raid.SoftwareRAIDVolumes) != 0 {
-			return fmt.Errorf("node's driver %s does not support software RAID", raidInterface)
-		}
+// CheckRAIDInterface checks the current RAID interface and returns the desired one.
+func CheckRAIDInterface(raidInterface string, target, actual *metal3v1alpha1.RAIDConfig) (string, error) {
+	if target == nil {
+		return raidInterface, nil
 	}
-	return nil
+
+	if raidInterface == noRAIDInterface && len(target.HardwareRAIDVolumes) != 0 {
+		return "", fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", raidInterface)
+	}
+
+	// This is not a real case since no BMC driver defaults to agent, but we add it for consistency
+	if raidInterface == softwareRAIDInterface && len(target.HardwareRAIDVolumes) != 0 {
+		return "", fmt.Errorf("hardware RAID settings are defined, but the node's driver %s only supports software RAID", raidInterface)
+	}
+
+	// If software RAID is requested, change the RAID interface.
+	if len(target.SoftwareRAIDVolumes) != 0 {
+		return softwareRAIDInterface, nil
+	}
+
+	// If software RAID is being deleted, also change the interface.
+	if actual != nil && len(target.SoftwareRAIDVolumes) == 0 && len(actual.SoftwareRAIDVolumes) != 0 {
+		return softwareRAIDInterface, nil
+	}
+
+	return raidInterface, nil
 }
