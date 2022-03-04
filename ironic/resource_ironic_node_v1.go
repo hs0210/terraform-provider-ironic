@@ -658,7 +658,7 @@ func setRAIDConfig(client *gophercloud.ServiceClient, d *schema.ResourceData) (e
 			nodes.UpdateOperation{
 				Op:    nodes.ReplaceOp,
 				Path:  fmt.Sprintf("/%s", "raid_interface"),
-				Value: "raid_interface",
+				Value: raidInterface,
 			},
 		}
 
